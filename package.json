@@ -1,0 +1,17 @@
+{
+  "name": "agent-launcher",
+  "version": "1.0.0",
+  "description": "Launch per-workspace Claude Code Remote Control sessions on a host PC from another machine via MCP",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "init-config": "node scripts/init-config.mjs"
+  },
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  }
+}

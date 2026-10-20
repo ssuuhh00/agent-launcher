@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "port": 8765,
+  "token": "",
+  "permissionMode": null,
+  "workspaces": {
+    "thesis": {
+      "path": "C:/Users/YOU/Desktop/thesis",
+      "description": "졸업논문"
+    },
+    "recruitment": {
+      "path": "C:/Users/YOU/Desktop/recruitment",
+      "description": "채용 준비",
+      "permissionMode": "acceptEdits"
+    }
+  }
+}
