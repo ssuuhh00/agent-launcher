@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import os from "node:os";
 import express from "express";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -101,6 +102,23 @@ async function launchClaude(cwd, args, title) {
   return pid;
 }
 
+// 폴더 신뢰(trust) 여부. 상위 폴더가 신뢰돼 있으면 하위도 신뢰된다.
+// 신뢰 안 된 폴더에서 켜면 확인 창에서 멈춘 채 살아 있어서 started로 잘못 보이므로 미리 막는다
+function isTrusted(dir) {
+  let projects;
+  try {
+    projects = readJson(path.join(os.homedir(), ".claude.json")).projects || {};
+  } catch {
+    return true; // 확인할 수 없으면 막지 않는다
+  }
+  const norm = (p) => path.resolve(p).replace(/\\/g, "/").toLowerCase();
+  const trusted = new Set(Object.entries(projects).filter(([, v]) => v.hasTrustDialogAccepted).map(([k]) => norm(k)));
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (trusted.has(norm(d))) return true;
+    if (path.dirname(d) === d) return false;
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 먼저 Ctrl+C로 정상 종료시킨다. 그래야 claude.ai 세션 목록에서도 정리된다.
@@ -159,6 +177,13 @@ function buildServer() {
       const ws = workspaces()[workspace];
       if (!ws) return text(`'${workspace}' 워크스페이스가 없습니다. 가능한 이름: ${Object.keys(workspaces()).join(", ")}`);
       if (!existsSync(ws.path)) return text(`폴더가 없습니다: ${ws.path}`);
+      if (!isTrusted(ws.path)) {
+        return text({
+          result: "needs_trust",
+          workspace,
+          hint: `이 폴더는 아직 신뢰되지 않았습니다. PC에서 '${ws.path}'로 이동해 claude를 한 번 실행하고 신뢰를 승인하세요.`,
+        });
+      }
 
       const status = await workspaceStatus(workspace);
       if (status.running) return text({ result: "already_running", workspace, ...status });
