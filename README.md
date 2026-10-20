@@ -45,7 +45,7 @@
 - **정상 종료**: 끌 때는 해당 콘솔에 Ctrl+C를 보내서 claude가 스스로 정리하고 끝나게 한다. 10초 안에 안 꺼지면 그때 강제 종료한다.
 - **환경 정리**: Claude Code 세션 안에서 서버를 띄우면 `NO_COLOR`, `CLAUDE_CODE_SESSION_ID` 같은 그 세션 전용 변수가 따라온다. 서버가 시작할 때 이런 변수를 지워서, 켜진 에이전트가 깨끗한 환경에서 뜨게 한다.
 - **살아 있는지 확인**: PID가 존재하는지에 더해 프로세스 이름이 `claude.exe`인지도 확인한다. Windows는 PID를 재사용하기 때문이다.
-- **macOS 호스트**: 터미널 앱 새 창(창 제목 = 워크스페이스 이름)에서 띄우고, `ps`로 새로 생긴 claude의 PID를 찾는다. 끌 때는 SIGINT를 두 번 보내고(Ctrl+C 두 번과 같음), 10초 안에 안 꺼지면 SIGKILL.
+- **macOS 호스트**: 터미널 앱이나 iTerm2 새 창(창 제목 = 워크스페이스 이름)에서 띄우고, `ps`로 새로 생긴 claude의 PID를 찾는다. 끌 때는 SIGINT를 두 번 보내고(Ctrl+C 두 번과 같음), 10초 안에 안 꺼지면 SIGKILL.
 - **실패 감지**: 실행하고 4초 뒤에도 살아 있는지 확인한다. 재접속할 세션이 없거나 로그인이 만료된 경우를 잡아서 이유를 돌려준다.
 - **허용 목록**: `config.json`에 등록한 폴더만 켤 수 있다. 원격에서 임의의 경로나 명령을 넘길 수 없다.
 - **인자 전달**: 경로와 인자는 환경변수로 PowerShell에 넘긴다. 따옴표나 한글 경로 때문에 생기는 문제와 명령 주입을 피하기 위해서다.
@@ -81,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 | 키 | 값 | 설명 |
 |---|---|---|
 | `mode` | `interactive`(기본) / `server` | `server`는 `claude remote-control` 서버 모드. 폰에서 세션을 여러 개 만들 수 있지만 터미널에는 QR만 보인다 |
-| `terminal` | `wt`(기본) / `console` | Windows Terminal 탭으로 열지, 기본 콘솔 창으로 열지 |
+| `terminal` | Windows: `wt`(기본) / `console`<br>macOS: `terminal`(기본) / `iterm` | 에이전트를 띄울 터미널. Windows Terminal 탭이나 기본 콘솔 창, 맥은 터미널 앱이나 iTerm2 새 창 |
 | `permissionMode` | `auto`, `acceptEdits` 등 | 켜지는 세션의 권한 모드 |
 
 `workspaces`는 서버를 재시작하지 않아도 바로 반영된다. 각 폴더는 미리 한 번 `claude`로 열어서 폴더 신뢰(trust)를 승인해 둬야 한다.

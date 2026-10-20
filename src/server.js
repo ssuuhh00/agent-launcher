@@ -115,19 +115,28 @@ const launchedAs = (title) => new RegExp(`(--remote-control|--name) "?${escapeRe
 // sh에 넘길 인자를 작은따옴표로 감싼다
 const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
-// macOS: 터미널 앱 새 창에서 claude를 띄우고, 새로 생긴 claude의 PID를 찾는다
+// macOS 터미널별 AppleScript. argv: 1 = 실행할 셸 명령, 2 = 창 제목
+const MAC_TERMINALS = {
+  terminal: ['tell application "Terminal"', "set t to do script (item 1 of argv)", "set custom title of t to (item 2 of argv)", "end tell"],
+  iterm: [
+    'tell application "iTerm"',
+    "set w to (create window with default profile)",
+    "tell current session of w",
+    "set name to (item 2 of argv)",
+    "write text (item 1 of argv)",
+    "end tell",
+    "end tell",
+  ],
+};
+
+// macOS: 터미널 앱(config.terminal: terminal 기본, iterm) 새 창에서 claude를 띄우고, 새로 생긴 claude의 PID를 찾는다
 // 처음 한 번은 "node가 터미널을 제어하려고 합니다" 권한 창이 뜬다
 async function launchClaudeMac(cwd, args, title) {
   const before = new Set((await listProcesses()).map((p) => p.pid));
   const command = `cd ${shQuote(cwd)} && exec ${[await resolveClaude(), ...args].map(shQuote).join(" ")}`;
-  const script = [
-    "on run argv",
-    'tell application "Terminal"',
-    "set t to do script (item 1 of argv)",
-    "set custom title of t to (item 2 of argv)",
-    "end tell",
-    "end run",
-  ];
+  const terminal = loadConfig().terminal || "terminal";
+  if (!MAC_TERMINALS[terminal]) throw new Error(`macOS에서 쓸 수 없는 terminal 값입니다: ${terminal} (terminal 또는 iterm)`);
+  const script = ["on run argv", ...MAC_TERMINALS[terminal], "end run"];
   await run("osascript", [...script.flatMap((line) => ["-e", line]), command, title]);
   const pattern = launchedAs(title);
   for (let i = 0; i < 60; i++) {
