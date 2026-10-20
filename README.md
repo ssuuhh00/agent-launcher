@@ -54,7 +54,7 @@
 준비물: Node.js 18+, [Claude Code](https://claude.com/claude-code) (로그인 완료), [Tailscale](https://tailscale.com/download)
 
 ```powershell
-git clone https://github.com/<you>/agent-launcher.git
+git clone https://github.com/ssuuhh00/agent-launcher.git
 cd agent-launcher
 powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 ```
@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 준비물: Claude Code, Tailscale (호스트와 같은 계정으로 로그인)
 
 ```bash
-git clone https://github.com/<you>/agent-launcher.git
+git clone https://github.com/ssuuhh00/agent-launcher.git
 cd agent-launcher
 bash scripts/setup-client.sh
 ```
