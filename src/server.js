@@ -123,7 +123,8 @@ function buildServer() {
       const status = await workspaceStatus(workspace);
       if (status.running) return text({ result: "already_running", workspace, ...status });
 
-      const args = ["remote-control", "--name", workspace];
+      // spawn 모드를 명시하지 않으면 처음 실행 때 [1/2] 선택 질문에서 멈춰 버린다
+      const args = ["remote-control", "--name", workspace, "--spawn", ws.spawn || config.spawn || "same-dir"];
       const permissionMode = ws.permissionMode || config.permissionMode;
       if (permissionMode) args.push("--permission-mode", permissionMode);
       if (resume) args.push("--continue");
