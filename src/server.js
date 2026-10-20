@@ -21,7 +21,7 @@ const LOG_DIR = path.join(ROOT, "logs");
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8").replace(/^﻿/, ""));
 const loadConfig = () => readJson(CONFIG_PATH);
 if (!existsSync(CONFIG_PATH)) {
-  console.error("config.json이 없습니다. 먼저 scripts/setup-host.ps1 (또는 node scripts/init-config.mjs)를 실행하세요.");
+  console.error("config.json이 없습니다. 먼저 scripts/setup-host.ps1 (macOS는 scripts/setup-host.sh, 또는 node scripts/init-config.mjs)를 실행하세요.");
   process.exit(1);
 }
 const config = loadConfig();
@@ -59,10 +59,27 @@ function log(...args) {
   appendFileSync(path.join(LOG_DIR, "server.log"), line + "\n");
 }
 
-// PID가 살아 있고, 그게 정말 claude.exe인지 확인 (PID 재사용 대비)
+// 호스트는 Windows와 macOS를 지원한다. 켜기·확인·끄기만 OS별로 다르다
+const IS_MAC = process.platform === "darwin";
+
+// macOS: 실행 중인 프로세스의 PID와 명령줄
+async function listProcesses() {
+  const { stdout } = await run("ps", ["-axo", "pid=,command="]);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim().match(/^(\d+)\s+(.*)$/))
+    .filter(Boolean)
+    .map(([, pid, command]) => ({ pid: Number(pid), command }));
+}
+
+// PID가 살아 있고, 그게 정말 claude인지 확인 (PID 재사용 대비)
 async function isClaudeAlive(pid) {
   if (!pid) return false;
   try {
+    if (IS_MAC) {
+      const { stdout } = await run("ps", ["-p", String(pid), "-o", "command="]);
+      return path.basename(stdout.trim().split(/\s+/)[0]) === "claude";
+    }
     const { stdout } = await run("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"]);
     return stdout.toLowerCase().includes("claude.exe");
   } catch {
@@ -76,16 +93,57 @@ async function workspaceStatus(name) {
   return { running, pid: running ? entry.pid : null, startedAt: running ? entry.startedAt : null };
 }
 
-// claude.exe의 전체 경로 (Windows Terminal에 넘길 때 PATH 해석에 기대지 않도록)
+// claude 실행 파일의 전체 경로 (터미널에 넘길 때 PATH 해석에 기대지 않도록)
+// macOS는 launchd로 뜨면 PATH가 짧아서 흔한 설치 위치를 먼저 본다
 async function resolveClaude() {
   if (config.claudePath) return config.claudePath;
+  if (IS_MAC) {
+    const candidates = [path.join(os.homedir(), ".local/bin/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
+    const found = candidates.find((p) => existsSync(p));
+    if (found) return found;
+    const { stdout } = await run("which", ["claude"]);
+    return stdout.trim();
+  }
   const { stdout } = await run("where.exe", ["claude.exe"]);
   return stdout.split(/\r?\n/)[0].trim();
+}
+
+// 명령줄에서 이 워크스페이스 이름으로 켠 claude인지 (ai / ai_seminar처럼 겹치는 이름 대비)
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const launchedAs = (title) => new RegExp(`(--remote-control|--name) "?${escapeRegex(title)}"?(\\s|$)`);
+
+// sh에 넘길 인자를 작은따옴표로 감싼다
+const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+// macOS: 터미널 앱 새 창에서 claude를 띄우고, 새로 생긴 claude의 PID를 찾는다
+// 처음 한 번은 "node가 터미널을 제어하려고 합니다" 권한 창이 뜬다
+async function launchClaudeMac(cwd, args, title) {
+  const before = new Set((await listProcesses()).map((p) => p.pid));
+  const command = `cd ${shQuote(cwd)} && exec ${[await resolveClaude(), ...args].map(shQuote).join(" ")}`;
+  const script = [
+    "on run argv",
+    'tell application "Terminal"',
+    "set t to do script (item 1 of argv)",
+    "set custom title of t to (item 2 of argv)",
+    "end tell",
+    "end run",
+  ];
+  await run("osascript", [...script.flatMap((line) => ["-e", line]), command, title]);
+  const pattern = launchedAs(title);
+  for (let i = 0; i < 60; i++) {
+    await sleep(250);
+    const found = (await listProcesses()).find(
+      (p) => !before.has(p.pid) && path.basename(p.command.split(/\s+/)[0]) === "claude" && pattern.test(p.command),
+    );
+    if (found) return found.pid;
+  }
+  throw new Error("터미널에서 claude 프로세스를 찾지 못했습니다.");
 }
 
 // 새 터미널에서 claude를 띄우고 실제 claude.exe PID를 받는다 (scripts/launch-agent.ps1).
 // 경로·인자는 환경변수로 넘겨서 PowerShell 따옴표 문제를 피함
 async function launchClaude(cwd, args, title) {
+  if (IS_MAC) return launchClaudeMac(cwd, args, title);
   const helper = path.join(ROOT, "scripts", "launch-agent.ps1");
   const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper], {
     env: {
@@ -123,16 +181,34 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 먼저 Ctrl+C로 정상 종료시킨다. 그래야 claude.ai 세션 목록에서도 정리된다.
 // taskkill /F로 바로 죽이면 세션이 목록에 idle로 남는다. 10초 안에 안 꺼지면 그때 강제 종료
+// macOS는 SIGINT를 두 번 보낸다 (Ctrl+C 두 번과 같음)
 async function stopClaude(pid) {
-  const helper = path.join(ROOT, "scripts", "send-ctrl-c.ps1");
-  await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, String(pid)]).catch(
-    () => {},
-  );
+  if (IS_MAC) {
+    const interrupt = () => {
+      try {
+        process.kill(pid, "SIGINT");
+      } catch {}
+    };
+    interrupt();
+    await sleep(500);
+    interrupt();
+  } else {
+    const helper = path.join(ROOT, "scripts", "send-ctrl-c.ps1");
+    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, String(pid)]).catch(
+      () => {},
+    );
+  }
   for (let i = 0; i < 20; i++) {
     if (!(await isClaudeAlive(pid))) return "graceful";
     await sleep(500);
   }
-  await run("taskkill", ["/PID", String(pid), "/T", "/F"]).catch(() => {});
+  if (IS_MAC) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  } else {
+    await run("taskkill", ["/PID", String(pid), "/T", "/F"]).catch(() => {});
+  }
   return "forced";
 }
 

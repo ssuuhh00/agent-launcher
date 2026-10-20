@@ -45,6 +45,7 @@
 - **정상 종료**: 끌 때는 해당 콘솔에 Ctrl+C를 보내서 claude가 스스로 정리하고 끝나게 한다. 10초 안에 안 꺼지면 그때 강제 종료한다.
 - **환경 정리**: Claude Code 세션 안에서 서버를 띄우면 `NO_COLOR`, `CLAUDE_CODE_SESSION_ID` 같은 그 세션 전용 변수가 따라온다. 서버가 시작할 때 이런 변수를 지워서, 켜진 에이전트가 깨끗한 환경에서 뜨게 한다.
 - **살아 있는지 확인**: PID가 존재하는지에 더해 프로세스 이름이 `claude.exe`인지도 확인한다. Windows는 PID를 재사용하기 때문이다.
+- **macOS 호스트**: 터미널 앱 새 창(창 제목 = 워크스페이스 이름)에서 띄우고, `ps`로 새로 생긴 claude의 PID를 찾는다. 끌 때는 SIGINT를 두 번 보내고(Ctrl+C 두 번과 같음), 10초 안에 안 꺼지면 SIGKILL.
 - **실패 감지**: 실행하고 4초 뒤에도 살아 있는지 확인한다. 재접속할 세션이 없거나 로그인이 만료된 경우를 잡아서 이유를 돌려준다.
 - **허용 목록**: `config.json`에 등록한 폴더만 켤 수 있다. 원격에서 임의의 경로나 명령을 넘길 수 없다.
 - **인자 전달**: 경로와 인자는 환경변수로 PowerShell에 넘긴다. 따옴표나 한글 경로 때문에 생기는 문제와 명령 주입을 피하기 위해서다.
@@ -85,6 +86,26 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 
 `workspaces`는 서버를 재시작하지 않아도 바로 반영된다. 각 폴더는 미리 한 번 `claude`로 열어서 폴더 신뢰(trust)를 승인해 둬야 한다.
 
+### 호스트 (macOS)
+
+맥도 호스트가 될 수 있다. Windows PC에서 맥의 에이전트를 켜는 반대 방향이다.
+준비물: Node.js 18+ (`brew install node`), Claude Code (로그인 완료), Tailscale
+
+```bash
+git clone https://github.com/ssuuhh00/agent-launcher.git
+cd agent-launcher
+bash scripts/setup-host.sh
+```
+
+스크립트가 하는 일:
+1. `npm install`, `config.json` 생성 (랜덤 토큰 포함)
+2. 서버를 `0.0.0.0` 대신 **맥의 Tailscale 주소에만** 연다 (`host` 값)
+3. macOS 방화벽이 켜져 있으면 node의 접속을 허용한다 (관리자 암호)
+4. LaunchAgent(`~/Library/LaunchAgents/com.agent-launcher.plist`)로 등록해서 로그인하면 자동 실행
+
+그다음 `config.json`의 `workspaces`를 맥 폴더로 고친다. 처음 `start_agent` 때 "node가 터미널을 제어하려고 합니다" 창이 뜨면 허용한다.
+맥북은 뚜껑을 닫거나 잠자기에 들어가면 요청을 받을 수 없다.
+
 ### 클라이언트 (맥북 등 요청을 보내는 기기)
 
 준비물: Claude Code, Tailscale (호스트와 같은 계정으로 로그인)
@@ -96,6 +117,12 @@ bash scripts/setup-client.sh
 ```
 
 호스트 주소(Tailscale 기기 이름)와 토큰을 입력하면, 연결을 확인한 뒤 `claude mcp add`로 등록한다.
+
+Windows PC가 클라이언트일 때(맥 호스트에 붙을 때)는 PowerShell 스크립트를 쓴다. 기본 등록 이름은 `agent-launcher-mac`이라 PC 자신의 런처와 겹치지 않는다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-client.ps1 -HostName <맥 Tailscale 주소>
+```
 그다음 Claude Code에서 이렇게 말하면 된다.
 
 > 집 PC 졸업논문 에이전트 켜줘
@@ -103,15 +130,15 @@ bash scripts/setup-client.sh
 ## 보안
 
 - 서버는 **Bearer 토큰** 없이는 응답하지 않는다. 토큰 비교는 `timingSafeEqual`로 한다.
-- 방화벽은 Tailscale 대역에서 오는 접속만 허용한다. 공용 인터넷에 포트를 열지 않는다.
+- Windows는 방화벽에서 Tailscale 대역에서 오는 접속만 허용하고, macOS는 서버를 Tailscale 주소에만 연다. 공용 인터넷에 포트를 열지 않는다.
 - 원격에서 할 수 있는 일은 **등록된 폴더에서 Claude Code를 켜고 끄는 것뿐**이다. 실제 작업은 Claude 계정 인증을 거친 Remote Control 세션 안에서 이뤄진다.
 - `config.json`(토큰)과 `state.json`은 `.gitignore`에 들어 있다.
 
 ## 한계
 
-- 호스트는 Windows 전용이다 (`Start-Process`, `tasklist`, `taskkill` 사용).
-- 호스트 PC가 꺼져 있거나 절전 중이면 동작하지 않는다.
-- 맥북을 뺀 다른 클라이언트 OS의 등록 스크립트는 아직 없다. `claude mcp add` 명령을 직접 실행하면 된다.
+- 호스트는 Windows와 macOS만 지원한다. Linux 호스트는 아직 없다.
+- 호스트가 꺼져 있거나 절전 중이면 동작하지 않는다.
+- 클라이언트 등록 스크립트는 macOS/Linux(`setup-client.sh`)와 Windows(`setup-client.ps1`)용이 있다. 다른 환경은 `claude mcp add` 명령을 직접 실행하면 된다.
 
 ## License
 
