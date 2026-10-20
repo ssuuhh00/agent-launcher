@@ -78,6 +78,23 @@ async function launchClaude(cwd, args) {
   return pid;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 먼저 Ctrl+C로 정상 종료시킨다. 그래야 claude.ai 세션 목록에서도 정리된다.
+// taskkill /F로 바로 죽이면 세션이 목록에 idle로 남는다. 10초 안에 안 꺼지면 그때 강제 종료
+async function stopClaude(pid) {
+  const helper = path.join(ROOT, "scripts", "send-ctrl-c.ps1");
+  await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper, String(pid)]).catch(
+    () => {},
+  );
+  for (let i = 0; i < 20; i++) {
+    if (!(await isClaudeAlive(pid))) return "graceful";
+    await sleep(500);
+  }
+  await run("taskkill", ["/PID", String(pid), "/T", "/F"]).catch(() => {});
+  return "forced";
+}
+
 const text = (obj) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }] });
 
 function buildServer() {
@@ -133,7 +150,7 @@ function buildServer() {
       log(`start ${workspace} pid=${pid} args=${args.join(" ")}`);
 
       // 바로 죽는 경우(재접속할 세션 없음, 로그인 만료 등)를 잡기 위해 잠깐 기다렸다 확인
-      await new Promise((r) => setTimeout(r, 4000));
+      await sleep(4000);
       if (!(await isClaudeAlive(pid))) {
         return text({
           result: "exited",
@@ -171,11 +188,11 @@ function buildServer() {
         saveState(state);
         return text({ result: "not_running", workspace });
       }
-      await run("taskkill", ["/PID", String(status.pid), "/T", "/F"]).catch(() => {});
+      const how = await stopClaude(status.pid);
       delete state[workspace];
       saveState(state);
-      log(`stop ${workspace} pid=${status.pid}`);
-      return text({ result: "stopped", workspace });
+      log(`stop ${workspace} pid=${status.pid} (${how})`);
+      return text({ result: "stopped", workspace, how });
     },
   );
 
