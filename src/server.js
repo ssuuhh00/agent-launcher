@@ -29,6 +29,24 @@ if (!config.token) {
   process.exit(1);
 }
 
+// Claude Code 세션 안에서 서버를 띄우면 그 세션 전용 환경변수(NO_COLOR, CLAUDE_CODE_SESSION_ID 등)가 따라온다.
+// 그대로 넘기면 켜진 에이전트가 흑백이 되거나 부모 세션의 일부처럼 동작하므로 지운다
+const INHERITED_SESSION_ENV = [
+  "NO_COLOR",
+  "CLAUDECODE",
+  "CLAUDE_PID",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_BRIDGE_SESSION_ID",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "WT_SESSION",
+  "WT_PROFILE_ID",
+];
+for (const key of INHERITED_SESSION_ENV) delete process.env[key];
+
 // 서버가 재시작돼도 어떤 에이전트를 켰는지 기억하도록 PID를 파일에 저장
 const loadState = () => (existsSync(STATE_PATH) ? readJson(STATE_PATH) : {});
 const saveState = (state) => writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
@@ -57,20 +75,25 @@ async function workspaceStatus(name) {
   return { running, pid: running ? entry.pid : null, startedAt: running ? entry.startedAt : null };
 }
 
-const quote = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+// claude.exe의 전체 경로 (Windows Terminal에 넘길 때 PATH 해석에 기대지 않도록)
+async function resolveClaude() {
+  if (config.claudePath) return config.claudePath;
+  const { stdout } = await run("where.exe", ["claude.exe"]);
+  return stdout.split(/\r?\n/)[0].trim();
+}
 
-// 새 콘솔 창에서 claude remote-control 실행. Start-Process -PassThru로 실제 claude.exe PID를 받는다.
+// 새 터미널에서 claude를 띄우고 실제 claude.exe PID를 받는다 (scripts/launch-agent.ps1).
 // 경로·인자는 환경변수로 넘겨서 PowerShell 따옴표 문제를 피함
-async function launchClaude(cwd, args) {
-  const script =
-    "$p = Start-Process -FilePath $env:AL_EXE -ArgumentList $env:AL_ARGS " +
-    "-WorkingDirectory $env:AL_CWD -PassThru; $p.Id";
-  const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+async function launchClaude(cwd, args, title) {
+  const helper = path.join(ROOT, "scripts", "launch-agent.ps1");
+  const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper], {
     env: {
       ...process.env,
-      AL_EXE: config.claudePath || "claude.exe",
-      AL_ARGS: args.map(quote).join(" "),
+      AL_EXE: await resolveClaude(),
+      AL_ARGS: JSON.stringify(args),
       AL_CWD: cwd,
+      AL_TITLE: title,
+      AL_TERMINAL: config.terminal || "wt",
     },
   });
   const pid = Number.parseInt(stdout.trim(), 10);
@@ -129,7 +152,7 @@ function buildServer() {
         resume: z
           .boolean()
           .optional()
-          .describe("true면 이 폴더에서 최근(약 4시간 이내) 쓰던 세션에 다시 붙습니다. 기본은 새 세션"),
+          .describe("true면 이 폴더에서 가장 최근 대화를 이어서 엽니다. 기본은 새 대화"),
       },
     },
     async ({ workspace, resume }) => {
@@ -140,13 +163,19 @@ function buildServer() {
       const status = await workspaceStatus(workspace);
       if (status.running) return text({ result: "already_running", workspace, ...status });
 
-      // spawn 모드를 명시하지 않으면 처음 실행 때 [1/2] 선택 질문에서 멈춰 버린다
-      const args = ["remote-control", "--name", workspace, "--spawn", ws.spawn || config.spawn || "same-dir"];
+      // interactive(기본): 평소 쓰는 대화형 claude에 Remote Control을 켠다. PC 터미널에서도 같은 대화가 보인다
+      // server: claude remote-control 서버 모드. 폰/웹에서 세션을 여러 개 만들 수 있지만 터미널엔 QR만 보인다
+      const mode = ws.mode || config.mode || "interactive";
+      const args =
+        mode === "server"
+          ? // spawn 모드를 명시하지 않으면 처음 실행 때 [1/2] 선택 질문에서 멈춰 버린다
+            ["remote-control", "--name", workspace, "--spawn", ws.spawn || config.spawn || "same-dir"]
+          : ["--remote-control", workspace];
       const permissionMode = ws.permissionMode || config.permissionMode;
       if (permissionMode) args.push("--permission-mode", permissionMode);
       if (resume) args.push("--continue");
 
-      const pid = await launchClaude(ws.path, args);
+      const pid = await launchClaude(ws.path, args, workspace);
       log(`start ${workspace} pid=${pid} args=${args.join(" ")}`);
 
       // 바로 죽는 경우(재접속할 세션 없음, 로그인 만료 등)를 잡기 위해 잠깐 기다렸다 확인
@@ -156,8 +185,8 @@ function buildServer() {
           result: "exited",
           workspace,
           hint: resume
-            ? "재접속할 최근 세션이 없었을 수 있습니다. resume 없이 다시 시도해 보세요."
-            : "claude가 바로 종료됐습니다. PC에서 해당 폴더로 `claude remote-control`을 직접 실행해 오류를 확인하세요.",
+            ? "이어갈 최근 대화가 없었을 수 있습니다. resume 없이 다시 시도해 보세요."
+            : `claude가 바로 종료됐습니다. PC에서 해당 폴더로 \`claude ${args.join(" ")}\`를 직접 실행해 오류를 확인하세요.`,
         });
       }
 

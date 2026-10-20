@@ -35,13 +35,15 @@
 | 도구 | 설명 |
 |---|---|
 | `list_workspaces` | 등록된 워크스페이스와 각 에이전트의 실행 여부 |
-| `start_agent(workspace, resume?)` | 해당 폴더에서 `claude remote-control --name <workspace>` 실행. `resume: true`면 최근(약 4시간 이내) 세션에 다시 붙는다 |
+| `start_agent(workspace, resume?)` | 해당 폴더에서 `claude --remote-control <workspace>` 실행. `resume: true`면 그 폴더의 가장 최근 대화를 이어서 연다 |
 | `stop_agent(workspace)` | 켠 에이전트를 종료 |
 
 ## 동작 방식
 
 - **전송 방식**: MCP의 Streamable HTTP를 **stateless**로 쓴다. 요청마다 서버와 트랜스포트 객체를 새로 만들기 때문에 세션 상태를 관리할 필요가 없다.
-- **에이전트 실행**: `Start-Process -PassThru`로 새 콘솔 창에서 `claude.exe`를 띄우고, **실제 PID**를 받아 `state.json`에 저장한다. 서버가 재시작돼도 무엇을 켰는지 기억한다.
+- **에이전트 실행**: Windows Terminal의 `agent-launcher` 창에 워크스페이스마다 탭을 열고, 그 안에서 대화형 claude를 Remote Control이 켜진 상태로 띄운다. 맥북이나 폰에서 하던 대화가 PC 터미널에도 그대로 보여서, PC 앞에 오면 그 창에 바로 이어서 입력하면 된다. 실행된 claude.exe의 **실제 PID**는 `state.json`에 저장한다. 서버가 재시작돼도 무엇을 켰는지 기억한다.
+- **정상 종료**: 끌 때는 해당 콘솔에 Ctrl+C를 보내서 claude가 스스로 정리하고 끝나게 한다. 10초 안에 안 꺼지면 그때 강제 종료한다.
+- **환경 정리**: Claude Code 세션 안에서 서버를 띄우면 `NO_COLOR`, `CLAUDE_CODE_SESSION_ID` 같은 그 세션 전용 변수가 따라온다. 서버가 시작할 때 이런 변수를 지워서, 켜진 에이전트가 깨끗한 환경에서 뜨게 한다.
 - **살아 있는지 확인**: PID가 존재하는지에 더해 프로세스 이름이 `claude.exe`인지도 확인한다. Windows는 PID를 재사용하기 때문이다.
 - **실패 감지**: 실행하고 4초 뒤에도 살아 있는지 확인한다. 재접속할 세션이 없거나 로그인이 만료된 경우를 잡아서 이유를 돌려준다.
 - **허용 목록**: `config.json`에 등록한 폴더만 켤 수 있다. 원격에서 임의의 경로나 명령을 넘길 수 없다.
@@ -72,6 +74,14 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
   "thesis": { "path": "C:/Users/me/Desktop/thesis", "description": "졸업논문" }
 }
 ```
+
+고를 수 있는 옵션 (전체 또는 워크스페이스별):
+
+| 키 | 값 | 설명 |
+|---|---|---|
+| `mode` | `interactive`(기본) / `server` | `server`는 `claude remote-control` 서버 모드. 폰에서 세션을 여러 개 만들 수 있지만 터미널에는 QR만 보인다 |
+| `terminal` | `wt`(기본) / `console` | Windows Terminal 탭으로 열지, 기본 콘솔 창으로 열지 |
+| `permissionMode` | `auto`, `acceptEdits` 등 | 켜지는 세션의 권한 모드 |
 
 `workspaces`는 서버를 재시작하지 않아도 바로 반영된다. 각 폴더는 미리 한 번 `claude`로 열어서 폴더 신뢰(trust)를 승인해 둬야 한다.
 
