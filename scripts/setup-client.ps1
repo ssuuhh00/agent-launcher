@@ -24,6 +24,9 @@ try {
     throw "예상치 못한 응답(HTTP $status)"
 }
 
+# 등록된 게 없으면 remove가 stderr를 내는데, PowerShell 5.1은 Stop 모드에서 이걸 오류로 보고 멈춘다
+$ErrorActionPreference = 'Continue'
 claude mcp remove $Name -s user 2>$null | Out-Null
+$ErrorActionPreference = 'Stop'
 claude mcp add --transport http --scope user $Name $Url --header "Authorization: Bearer $Token"
 Write-Host '등록 완료. 새 claude 세션을 열고 /mcp 로 확인하세요.'
