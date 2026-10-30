@@ -32,10 +32,20 @@ Write-Host '[5/5] 로그인 시 자동 실행 등록 (시작프로그램 폴더 
 $Shortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'agent-launcher.lnk'
 $Shell = New-Object -ComObject WScript.Shell
 $Link = $Shell.CreateShortcut($Shortcut)
-$Link.TargetPath = (Get-Command powershell.exe).Source
-$Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\scripts\start-host.ps1`""
+$PowerShell = (Get-Command powershell.exe).Source
+$HostArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\scripts\start-host.ps1`""
+$Wt = Get-Command wt.exe -ErrorAction SilentlyContinue
+if ($Wt) {
+    # 에이전트가 뜨는 Windows Terminal 'agent-launcher' 창에 '서버' 탭으로 띄운다 (로그인 직후에는 첫 탭)
+    # 에이전트를 다 꺼도 서버 탭이 남아서 창이 사라지지 않는다
+    $Link.TargetPath = $Wt.Source
+    $Link.Arguments = "-w agent-launcher new-tab --title 서버 --suppressApplicationTitle -d `"$Root`" `"$PowerShell`" $HostArgs"
+} else {
+    $Link.TargetPath = $PowerShell
+    $Link.Arguments = $HostArgs
+    $Link.WindowStyle = 7  # Windows Terminal이 없으면 최소화된 PowerShell 창으로
+}
 $Link.WorkingDirectory = $Root
-$Link.WindowStyle = 7  # 최소화 상태로 실행
 $Link.Save()
 
 Write-Host ''

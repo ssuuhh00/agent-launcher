@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 1. `npm install`
 2. `config.json` 생성 (랜덤 토큰 포함)
 3. Windows 방화벽에 **Tailscale 대역(100.64.0.0/10)에서만** 8765 포트 허용
-4. 시작프로그램에 등록해서 로그인하면 서버가 최소화 창으로 자동 실행
+4. 시작프로그램에 등록해서 로그인하면 서버가 Windows Terminal `agent-launcher` 창의 **서버** 탭(Windows PowerShell)으로 자동 실행. 에이전트 탭도 같은 창에 열린다. 서버 탭을 닫으면 원격에서 에이전트를 켤 수 없으니 닫지 않는다 (Windows Terminal이 없으면 최소화된 PowerShell 창)
 
 그다음 `config.json`의 `workspaces`를 내 폴더에 맞게 고친다.
 
