@@ -1,5 +1,5 @@
 // agent-launcher: 원격에서 워크스페이스별 Claude Code(remote-control)를 켜고 끄는 MCP 서버
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { timingSafeEqual } from "node:crypto";
@@ -149,10 +149,16 @@ async function launchClaudeMac(cwd, args, title) {
   throw new Error("터미널에서 claude 프로세스를 찾지 못했습니다.");
 }
 
+// stop_agent가 PowerShell 탭까지 닫게 할 때 만드는 표시 파일 (탭의 PowerShell이 claude가 끝난 뒤 이 파일을 확인)
+const closeMarker = (workspace) => path.join(os.tmpdir(), "agent-launcher", `close-${workspace}`);
+
 // 새 터미널에서 claude를 띄우고 실제 claude.exe PID를 받는다 (scripts/launch-agent.ps1).
 // 경로·인자는 환경변수로 넘겨서 PowerShell 따옴표 문제를 피함
 async function launchClaude(cwd, args, title) {
   if (IS_MAC) return launchClaudeMac(cwd, args, title);
+  const marker = closeMarker(title);
+  mkdirSync(path.dirname(marker), { recursive: true });
+  rmSync(marker, { force: true }); // 지난번에 남은 표시 때문에 이번 탭이 닫히지 않게
   const helper = path.join(ROOT, "scripts", "launch-agent.ps1");
   const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper], {
     env: {
@@ -162,6 +168,7 @@ async function launchClaude(cwd, args, title) {
       AL_CWD: cwd,
       AL_TITLE: title,
       AL_TERMINAL: config.terminal || "wt",
+      AL_CLOSE_MARKER: marker,
     },
   });
   const pid = Number.parseInt(stdout.trim(), 10);
@@ -317,9 +324,15 @@ function buildServer() {
     {
       title: "에이전트 끄기",
       description: "start_agent로 켠 워크스페이스 에이전트를 종료합니다.",
-      inputSchema: { workspace: z.string().describe("종료할 워크스페이스 이름") },
+      inputSchema: {
+        workspace: z.string().describe("종료할 워크스페이스 이름"),
+        closeTerminal: z
+          .boolean()
+          .optional()
+          .describe("Windows에서 claude가 떠 있던 PowerShell 탭도 닫을지. 기본 true, false면 탭을 PowerShell 프롬프트로 남김"),
+      },
     },
-    async ({ workspace }) => {
+    async ({ workspace, closeTerminal }) => {
       const status = await workspaceStatus(workspace);
       const state = loadState();
       if (!status.running) {
@@ -327,7 +340,13 @@ function buildServer() {
         saveState(state);
         return text({ result: "not_running", workspace });
       }
+      const marker = closeMarker(workspace);
+      if (!IS_MAC && closeTerminal !== false) {
+        mkdirSync(path.dirname(marker), { recursive: true });
+        writeFileSync(marker, "");
+      }
       const how = await stopClaude(status.pid);
+      if (closeTerminal === false) rmSync(marker, { force: true });
       delete state[workspace];
       saveState(state);
       log(`stop ${workspace} pid=${status.pid} (${how})`);

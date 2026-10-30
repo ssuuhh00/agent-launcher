@@ -36,7 +36,7 @@
 |---|---|
 | `list_workspaces` | 등록된 워크스페이스와 각 에이전트의 실행 여부 |
 | `start_agent(workspace, resume?)` | 해당 폴더에서 `claude --remote-control <workspace>` 실행. `resume: true`면 그 폴더의 가장 최근 대화를 이어서 연다 |
-| `stop_agent(workspace)` | 켠 에이전트를 종료 |
+| `stop_agent(workspace, closeTerminal?)` | 켠 에이전트를 종료. Windows는 claude가 떠 있던 PowerShell 탭도 함께 닫는다 (`closeTerminal: false`면 탭을 프롬프트로 남김). 탭에서 직접 claude를 끈 경우에는 탭이 남는다 |
 
 ## 동작 방식
 
