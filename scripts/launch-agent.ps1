@@ -13,13 +13,12 @@ if ($env:AL_TERMINAL -ne 'console' -and $wt) {
     # 이미 떠 있던 claude는 빼고, 이름이 정확히 일치하는 것만 잡는다 (ai / ai_seminar처럼 겹치는 이름 대비)
     $before = @(Get-CimInstance Win32_Process -Filter "Name='claude.exe'" | ForEach-Object ProcessId)
     $pattern = '(--remote-control|--name) "?' + [regex]::Escape($title) + '"?(\s|$)'
-    # 탭은 PowerShell로 열고 그 안에서 claude를 실행한다. claude가 끝나도 탭이 PowerShell 프롬프트로 남는다
+    # 탭은 Windows PowerShell(터미널 기본 프로필과 같은 셸)로 열고 그 안에서 claude를 실행한다. claude가 끝나도 탭이 PowerShell 프롬프트로 남는다
     # 명령은 -EncodedCommand로 넘겨서 wt의 ; 구분자나 따옴표, 한글 경로 문제를 피한다
     $quote = { param($s) "'" + ($s -replace "'", "''") + "'" }
     $command = '& ' + (& $quote $exe) + ' ' + (($argv | ForEach-Object { & $quote $_ }) -join ' ')
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-    $shell = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-    if (-not $shell) { $shell = Get-Command powershell.exe }
+    $shell = Get-Command powershell.exe
     & $wt.Source -w agent-launcher new-tab --title $title --suppressApplicationTitle -d $cwd $shell.Source -NoExit -EncodedCommand $encoded
     for ($i = 0; $i -lt 40; $i++) {
         Start-Sleep -Milliseconds 250
