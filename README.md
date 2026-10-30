@@ -67,7 +67,16 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 1. `npm install`
 2. `config.json` 생성 (랜덤 토큰 포함)
 3. Windows 방화벽에 **Tailscale 대역(100.64.0.0/10)에서만** 8765 포트 허용
-4. 시작프로그램에 등록해서 로그인하면 서버가 최소화 창으로 자동 실행
+4. 시작프로그램에 등록해서 로그인하면 서버가 **창 없이** 자동 실행. 서버가 꺼지면 10초 뒤 다시 뜨고, 바로가기를 두 번 실행해도 하나만 돈다
+
+서버를 끄거나(업데이트 뒤) 다시 켤 때:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\stop-host.ps1            # 끄기
+powershell -ExecutionPolicy Bypass -File scripts\stop-host.ps1 -Restart   # 다시 켜기
+```
+
+켜 둔 에이전트는 서버를 다시 켜도 그대로 돌고, 서버가 `state.json`으로 기억한다.
 
 그다음 `config.json`의 `workspaces`를 내 폴더에 맞게 고친다.
 
