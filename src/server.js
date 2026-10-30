@@ -129,11 +129,18 @@ const MAC_TERMINALS = {
   ],
 };
 
+// stop_agent가 터미널(Windows PowerShell 탭, macOS 창)까지 닫게 할 때 만드는 표시 파일.
+// 터미널의 셸이 claude가 끝난 뒤 이 파일을 확인해서, 있으면 지우고 스스로 종료한다
+const closeMarker = (workspace) => path.join(os.tmpdir(), "agent-launcher", `close-${workspace}`);
+
 // macOS: 터미널 앱(config.terminal: terminal 기본, iterm) 새 창에서 claude를 띄우고, 새로 생긴 claude의 PID를 찾는다
 // 처음 한 번은 "node가 터미널을 제어하려고 합니다" 권한 창이 뜬다
-async function launchClaudeMac(cwd, args, title) {
+// claude가 끝나면 셸 프롬프트로 돌아오고, stop_agent가 표시 파일을 만들어 둔 경우에만 셸도 끝나서 창이 닫힌다
+// (iTerm2는 프로필의 "세션이 끝나면 닫기", 터미널 앱은 "셸이 정상 종료되면 창 닫기" 설정을 따른다)
+async function launchClaudeMac(cwd, args, title, marker) {
   const before = new Set((await listProcesses()).map((p) => p.pid));
-  const command = `cd ${shQuote(cwd)} && exec ${[await resolveClaude(), ...args].map(shQuote).join(" ")}`;
+  const claude = [await resolveClaude(), ...args].map(shQuote).join(" ");
+  const command = `cd ${shQuote(cwd)} && ${claude}; if [ -e ${shQuote(marker)} ]; then rm -f ${shQuote(marker)}; exit; fi`;
   const terminal = loadConfig().terminal || "terminal";
   if (!MAC_TERMINALS[terminal]) throw new Error(`macOS에서 쓸 수 없는 terminal 값입니다: ${terminal} (terminal 또는 iterm)`);
   const script = ["on run argv", ...MAC_TERMINALS[terminal], "end run"];
@@ -149,16 +156,13 @@ async function launchClaudeMac(cwd, args, title) {
   throw new Error("터미널에서 claude 프로세스를 찾지 못했습니다.");
 }
 
-// stop_agent가 PowerShell 탭까지 닫게 할 때 만드는 표시 파일 (탭의 PowerShell이 claude가 끝난 뒤 이 파일을 확인)
-const closeMarker = (workspace) => path.join(os.tmpdir(), "agent-launcher", `close-${workspace}`);
-
 // 새 터미널에서 claude를 띄우고 실제 claude.exe PID를 받는다 (scripts/launch-agent.ps1).
 // 경로·인자는 환경변수로 넘겨서 PowerShell 따옴표 문제를 피함
 async function launchClaude(cwd, args, title) {
-  if (IS_MAC) return launchClaudeMac(cwd, args, title);
   const marker = closeMarker(title);
   mkdirSync(path.dirname(marker), { recursive: true });
-  rmSync(marker, { force: true }); // 지난번에 남은 표시 때문에 이번 탭이 닫히지 않게
+  rmSync(marker, { force: true }); // 지난번에 남은 표시 때문에 이번 터미널이 바로 닫히지 않게
+  if (IS_MAC) return launchClaudeMac(cwd, args, title, marker);
   const helper = path.join(ROOT, "scripts", "launch-agent.ps1");
   const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", helper], {
     env: {
@@ -329,7 +333,7 @@ function buildServer() {
         closeTerminal: z
           .boolean()
           .optional()
-          .describe("Windows에서 claude가 떠 있던 PowerShell 탭도 닫을지. 기본 true, false면 탭을 PowerShell 프롬프트로 남김"),
+          .describe("claude가 떠 있던 터미널(Windows PowerShell 탭, macOS 창)도 닫을지. 기본 true, false면 셸 프롬프트로 남김"),
       },
     },
     async ({ workspace, closeTerminal }) => {
@@ -341,7 +345,7 @@ function buildServer() {
         return text({ result: "not_running", workspace });
       }
       const marker = closeMarker(workspace);
-      if (!IS_MAC && closeTerminal !== false) {
+      if (closeTerminal !== false) {
         mkdirSync(path.dirname(marker), { recursive: true });
         writeFileSync(marker, "");
       }

@@ -36,7 +36,7 @@
 |---|---|
 | `list_workspaces` | 등록된 워크스페이스와 각 에이전트의 실행 여부 |
 | `start_agent(workspace, resume?)` | 해당 폴더에서 `claude --remote-control <workspace>` 실행. `resume: true`면 그 폴더의 가장 최근 대화를 이어서 연다 |
-| `stop_agent(workspace, closeTerminal?)` | 켠 에이전트를 종료. Windows는 claude가 떠 있던 PowerShell 탭도 함께 닫는다 (`closeTerminal: false`면 탭을 프롬프트로 남김). 탭에서 직접 claude를 끈 경우에는 탭이 남는다 |
+| `stop_agent(workspace, closeTerminal?)` | 켠 에이전트를 종료. claude가 떠 있던 터미널(Windows PowerShell 탭, macOS 창)도 함께 닫는다. `closeTerminal: false`면 셸 프롬프트로 남긴다 |
 
 ## 동작 방식
 
@@ -45,7 +45,8 @@
 - **정상 종료**: 끌 때는 해당 콘솔에 Ctrl+C를 보내서 claude가 스스로 정리하고 끝나게 한다. 10초 안에 안 꺼지면 그때 강제 종료한다.
 - **환경 정리**: Claude Code 세션 안에서 서버를 띄우면 `NO_COLOR`, `CLAUDE_CODE_SESSION_ID` 같은 그 세션 전용 변수가 따라온다. 서버가 시작할 때 이런 변수를 지워서, 켜진 에이전트가 깨끗한 환경에서 뜨게 한다.
 - **살아 있는지 확인**: PID가 존재하는지에 더해 프로세스 이름이 `claude.exe`인지도 확인한다. Windows는 PID를 재사용하기 때문이다.
-- **macOS 호스트**: 터미널 앱이나 iTerm2 새 창(창 제목 = 워크스페이스 이름)에서 띄우고, `ps`로 새로 생긴 claude의 PID를 찾는다. 끌 때는 SIGINT를 두 번 보내고(Ctrl+C 두 번과 같음), 10초 안에 안 꺼지면 SIGKILL.
+- **macOS 호스트**: 터미널 앱이나 iTerm2 새 창(창 제목 = 워크스페이스 이름)에서 셸로 claude를 띄우고, `ps`로 새로 생긴 claude의 PID를 찾는다. 끌 때는 SIGINT를 두 번 보내고(Ctrl+C 두 번과 같음), 10초 안에 안 꺼지면 SIGKILL.
+- **터미널 정리**: `stop_agent`로 끄면 터미널도 닫힌다. 서버가 끄기 전에 임시 폴더에 표시 파일(`agent-launcher/close-<워크스페이스>`)을 만들고, 터미널의 셸은 claude가 끝난 뒤 이 파일이 있으면 지우고 스스로 종료한다 (Windows는 `finally`에서 `[Environment]::Exit(0)`, macOS는 `exit`). 터미널에서 직접 claude를 끄면 표시 파일이 없으니 셸 프롬프트로 남아서, 그 자리에서 다시 쓸 수 있다. macOS 창이 닫히는 것은 iTerm2 프로필의 "세션이 끝나면 닫기"(기본값), 터미널 앱의 "셸이 정상 종료되면 창 닫기" 설정을 따른다.
 - **실패 감지**: 실행하고 4초 뒤에도 살아 있는지 확인한다. 재접속할 세션이 없거나 로그인이 만료된 경우를 잡아서 이유를 돌려준다.
 - **허용 목록**: `config.json`에 등록한 폴더만 켤 수 있다. 원격에서 임의의 경로나 명령을 넘길 수 없다.
 - **인자 전달**: 경로와 인자는 환경변수로 PowerShell에 넘긴다. 따옴표나 한글 경로 때문에 생기는 문제와 명령 주입을 피하기 위해서다.
