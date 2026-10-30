@@ -33,16 +33,14 @@ $Shortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'agent-launcher.
 $Shell = New-Object -ComObject WScript.Shell
 $Link = $Shell.CreateShortcut($Shortcut)
 $Link.TargetPath = (Get-Command powershell.exe).Source
-$Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Root\scripts\start-host.ps1`""
+$Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\scripts\start-host.ps1`""
 $Link.WorkingDirectory = $Root
-$Link.WindowStyle = 7  # 최소화로 시작해 바로 숨긴다 (창 없이 백그라운드 실행)
+$Link.WindowStyle = 7  # 최소화 상태로 실행
 $Link.Save()
 
 Write-Host ''
 Write-Host '설정 완료. 지금 서버를 켜려면 시작프로그램 바로가기를 실행하거나 다시 로그인하세요:'
 Write-Host "  Start-Process '$Shortcut'"
-Write-Host '서버는 창 없이 돌고, 꺼지면 10초 뒤 다시 뜹니다. 끄거나 다시 켜려면:'
-Write-Host '  powershell -ExecutionPolicy Bypass -File scripts\stop-host.ps1 [-Restart]'
 Write-Host ''
 Write-Host '클라이언트(맥북)에서 쓸 정보:'
 if (Get-Command tailscale -ErrorAction SilentlyContinue) {
