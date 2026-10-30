@@ -40,6 +40,7 @@ if ($Wt) {
     # 에이전트를 다 꺼도 서버 탭이 남아서 창이 사라지지 않는다
     $Link.TargetPath = $Wt.Source
     $Link.Arguments = "-w agent-launcher new-tab --title 서버 --suppressApplicationTitle -d `"$Root`" `"$PowerShell`" $HostArgs"
+    $Link.WindowStyle = 1  # 예전 바로가기의 최소화(7) 값이 남지 않게 보통 창으로
 } else {
     $Link.TargetPath = $PowerShell
     $Link.Arguments = $HostArgs
