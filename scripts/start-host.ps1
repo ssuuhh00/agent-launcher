@@ -11,7 +11,6 @@ $Mutex = New-Object System.Threading.Mutex($false, 'Local\agent-launcher-host')
 try { $Owned = $Mutex.WaitOne(0) } catch { $Owned = $true }
 if (-not $Owned) { Write-Host '이미 실행 중입니다 (host-ctl.ps1로 확인)'; exit }
 
-$PID | Set-Content (Join-Path $Root 'logs\host.pid')
 while ($true) {
     # 서버 로그는 server.js가 logs\server.log에 남기고, 크래시 스택 같은 콘솔 출력은 logs\host-console.log에 쌓인다
     cmd.exe /c "node src\server.js >> logs\host-console.log 2>&1"

@@ -74,10 +74,11 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1            # 상태
 powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 restart    # server.js를 pull한 뒤
-powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 stop       # 끄기 (다시 켜기는 start)
+powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 stop       # 끄기
+powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 start      # 다시 켜기
 ```
 
-켜 둔 에이전트는 서버를 다시 켜도 그대로 돌고, 서버가 `state.json`으로 기억한다. 서버 로그는 `logs\server.log`, 크래시 같은 콘솔 출력은 `logs\host-console.log`.
+`stop`은 자동 재시작까지 끄므로 `start`를 하거나 다음에 로그인할 때까지 꺼져 있다. 켜 둔 에이전트는 서버를 끄거나 다시 켜도 그대로 돌고, 서버가 `state.json`으로 기억한다. 서버 로그는 `logs\server.log`, 크래시 같은 콘솔 출력은 `logs\host-console.log`.
 
 그다음 `config.json`의 `workspaces`를 내 폴더에 맞게 고친다.
 
