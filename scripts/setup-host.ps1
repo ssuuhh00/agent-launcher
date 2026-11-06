@@ -32,26 +32,24 @@ Write-Host '[5/5] 로그인 시 자동 실행 등록 (시작프로그램 폴더 
 $Shortcut = Join-Path ([Environment]::GetFolderPath('Startup')) 'agent-launcher.lnk'
 $Shell = New-Object -ComObject WScript.Shell
 $Link = $Shell.CreateShortcut($Shortcut)
-$PowerShell = (Get-Command powershell.exe).Source
-$HostArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\scripts\start-host.ps1`""
-$Wt = Get-Command wt.exe -ErrorAction SilentlyContinue
-if ($Wt) {
-    # 에이전트가 뜨는 Windows Terminal 'agent-launcher' 창에 '서버' 탭으로 띄운다 (로그인 직후에는 첫 탭)
-    # 에이전트를 다 꺼도 서버 탭이 남아서 창이 사라지지 않는다
-    $Link.TargetPath = $Wt.Source
-    $Link.Arguments = "-w agent-launcher new-tab --title 서버 --suppressApplicationTitle -d `"$Root`" `"$PowerShell`" $HostArgs"
-    $Link.WindowStyle = 1  # 예전 바로가기의 최소화(7) 값이 남지 않게 보통 창으로
+$Wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+if (Test-Path $Wscript) {
+    # 서버는 창 없이 돈다. 바로가기만으로는 창을 숨길 수 없어서 VBScript가 PowerShell을 숨긴 채로 띄운다
+    $Link.TargetPath = $Wscript
+    $Link.Arguments = "`"$Root\scripts\start-host-hidden.vbs`""
+    $Link.WindowStyle = 1  # 예전 바로가기의 최소화(7) 값이 남지 않게
 } else {
-    $Link.TargetPath = $PowerShell
-    $Link.Arguments = $HostArgs
-    $Link.WindowStyle = 7  # Windows Terminal이 없으면 최소화된 PowerShell 창으로
+    # VBScript가 꺼진 Windows: 최소화로 잠깐 떴다가 숨는다
+    $Link.TargetPath = (Get-Command powershell.exe).Source
+    $Link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Root\scripts\start-host.ps1`""
+    $Link.WindowStyle = 7
 }
 $Link.WorkingDirectory = $Root
 $Link.Save()
 
 Write-Host ''
-Write-Host '설정 완료. 지금 서버를 켜려면 시작프로그램 바로가기를 실행하거나 다시 로그인하세요:'
-Write-Host "  Start-Process '$Shortcut'"
+Write-Host '설정 완료. 지금 서버를 켜려면 (다시 로그인해도 켜진다):'
+Write-Host '  powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 start'
 Write-Host ''
 Write-Host '클라이언트(맥북)에서 쓸 정보:'
 if (Get-Command tailscale -ErrorAction SilentlyContinue) {

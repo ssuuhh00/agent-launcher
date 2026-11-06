@@ -67,7 +67,17 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-host.ps1
 1. `npm install`
 2. `config.json` 생성 (랜덤 토큰 포함)
 3. Windows 방화벽에 **Tailscale 대역(100.64.0.0/10)에서만** 8765 포트 허용
-4. 시작프로그램에 등록해서 로그인하면 서버가 Windows Terminal `agent-launcher` 창의 **서버** 탭(Windows PowerShell)으로 자동 실행. 에이전트 탭도 같은 창에 열린다. 서버 탭을 닫으면 원격에서 에이전트를 켤 수 없으니 닫지 않는다 (Windows Terminal이 없으면 최소화된 PowerShell 창)
+4. 시작프로그램에 등록해서 로그인하면 서버가 **창 없이** 자동 실행. 서버가 꺼지면 3초 뒤 다시 뜨고(macOS의 launchd KeepAlive와 같은 역할), 두 번 실행해도 하나만 돈다. 에이전트는 전처럼 Windows Terminal `agent-launcher` 창의 탭으로 열린다
+
+서버 상태 확인·재시작(업데이트 뒤)·끄기:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1            # 상태
+powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 restart    # server.js를 pull한 뒤
+powershell -ExecutionPolicy Bypass -File scripts\host-ctl.ps1 stop       # 끄기 (다시 켜기는 start)
+```
+
+켜 둔 에이전트는 서버를 다시 켜도 그대로 돌고, 서버가 `state.json`으로 기억한다. 서버 로그는 `logs\server.log`, 크래시 같은 콘솔 출력은 `logs\host-console.log`.
 
 그다음 `config.json`의 `workspaces`를 내 폴더에 맞게 고친다.
 
